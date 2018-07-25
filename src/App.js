@@ -87,7 +87,7 @@ class App extends Component {
         <Elements />,
         document.getElementById('cache'),
         () => {
-          // document.getElementById('cache').style.display = 'none'
+          document.getElementById('cache').style.display = 'none'
           resolve({
             charWidth,
             charsPerLine,
