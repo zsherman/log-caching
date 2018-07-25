@@ -1,0 +1,64 @@
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.App {
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+}
+
+.Log {
+  padding: 3px 0;
+  /*animation: fadein .5s;*/
+}
+
+.Log span {
+  background: #ddd;
+}
+
+.Bifrost {
+  overflow-y: scroll;
+  width: 100%;
+}
+
+@keyframes fadein {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.stats {
+  background: #FFF;
+  margin: 0;
+  padding: 15px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  border-bottom: 1px solid #ddd;
+}
+
+.stats li {
+  margin-right: 20px;
+  font-weight: bold;
+  list-style: none;
+}
+
+.console {
+  flex: 1 1 auto;
+  background: #F3F5F8;
+}
+
+.footer {
+  background: #FFF;
+  border-top: 1px solid #ddd;
+  padding: 15px;
+  font-weight: bold;
+  flex-shrink: 0;
+  flex-grow: 0;
+}
