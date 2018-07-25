@@ -53,17 +53,6 @@ class App extends Component {
     })
   }
 
-  renderLog(index, key) {
-    const log = this.state.logs[index];
-    const heroku = log.context.platform.heroku;
-    const str = `${log.dt} ${heroku.source}:[${heroku.dyno_type}.${heroku.dyno_id}]`;
-    return (
-      <div className='Log' key={key}>
-        <span>index: {index} id: {log.id}</span> <span>{str}:</span> {log.message}
-      </div>
-    );
-  }
-
   cacheLogHeights () {
     return new Promise((resolve, reject) => {
       document.getElementById('cache').style.display = 'initial'
@@ -133,8 +122,6 @@ class App extends Component {
     } = this.state
 
     const isLoading = !heightCache || calculatingCacheSizes
-    console.log('isLoading', isLoading)
-    console.log(this.state)
 
     return (
       <div className='App'>
@@ -147,7 +134,10 @@ class App extends Component {
           <li>characters per line: {charsPerLine}</li>
           <li>calculating cache: {calculatingCacheSizes ? 'true' : 'false'}</li>
         </ul>
-        <div className='console' style={{ fontSize: 13, fontFamily: 'monospace', height: '100%', width: '100%' }}>
+        <div
+          className='console'
+          style={{ fontSize: 13, fontFamily: 'monospace', height: '100%', width: '100%' }}
+        >
           <Measure bounds onResize={this.handleResize}>
             {({ measureRef }) => (
               <div
