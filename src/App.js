@@ -58,7 +58,7 @@ class App extends Component {
   }
 
   cacheLogHeights () {
-    return new Promise((resolve, reject) => {
+    return new Promise(resolve => {
       document.getElementById('cache').style.display = 'initial'
       // Get character width and characters per line
       const charWidth = getTextWidth(' ', '13px monospace')
@@ -66,7 +66,8 @@ class App extends Component {
       const heightCache = {}
 
       // Generate some test strings based on the different message lengths
-      const testStrings = new Array(20).fill().map((a, i) => {
+      // eslint-disable-next-line
+      const testStrings = new Array(20).fill().map((_, i) => {
         return makeString((i + 1) * charsPerLine)
       })
 
