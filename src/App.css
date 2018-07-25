@@ -52,6 +52,19 @@ html, body {
 .console {
   flex: 1 1 auto;
   background: #F3F5F8;
+  font-size: 13px;
+  font-family: monospace;
+  position: relative;
+}
+
+.console-wrapper {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
 }
 
 .footer {

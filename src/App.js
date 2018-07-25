@@ -16,14 +16,11 @@ class App extends Component {
       width: window.innerWidth,
       containerHeight: window.innerHeight,
       containerWidth: window.innerWidth,
-      rowRendered: 0,
-      scrollToIndex: 49,
-      scrollToPosition: 'bottom',
       heightCache: null,
     };
 
-    this.renderLog = this.renderLog.bind(this);
     this.getItemSize = this.getItemSize.bind(this);
+    this.updateCacheAndMeasurements = this.updateCacheAndMeasurements.bind(this);
     this.handleResize = debounce(this.handleResize, 100, false)
   }
 
@@ -32,10 +29,7 @@ class App extends Component {
       calculatingCacheSizes: true,
     }, () => {
       this.cacheLogHeights()
-        .then(data => this.setState({
-          ...data,
-          calculatingCacheSizes: false
-        }))
+        .then(this.updateCacheAndMeasurements)
     })
   }
 
@@ -46,11 +40,21 @@ class App extends Component {
       calculatingCacheSizes: true,
     }, () => {
       this.cacheLogHeights()
-        .then(data => this.setState({
-          ...data,
-          calculatingCacheSizes: false
-        }))
+        .then(this.updateCacheAndMeasurements)
     })
+  }
+
+  updateCacheAndMeasurements (data) {
+    // Update measurements and set cache loading state
+    this.setState({
+      ...data,
+      calculatingCacheSizes: false
+    })
+
+    // Force List to clear cached heights
+    if (this.List) {
+      this.List.resetAfterIndex(0)
+    }
   }
 
   cacheLogHeights () {
@@ -126,44 +130,43 @@ class App extends Component {
     return (
       <div className='App'>
         <ul className='stats'>
-          <li>count: {this.state.logs.length}</li>
-          <li>rendered: {this.state.rowRendered}</li>
-          <li>height: {containerHeight}</li>
-          <li>width: {containerWidth}</li>
-          <li>character width: {charWidth}</li>
-          <li>characters per line: {charsPerLine}</li>
-          <li>calculating cache: {calculatingCacheSizes ? 'true' : 'false'}</li>
+          <li>row count: <mark>{this.state.logs.length}</mark></li>
+          <li>height: <mark>{containerHeight}</mark></li>
+          <li>width: <mark>{containerWidth}</mark></li>
+          <li>character width: <mark>{charWidth}</mark></li>
+          <li>characters per line: <mark>{charsPerLine}</mark></li>
+          <li>calculating cache: <mark>{calculatingCacheSizes ? 'true' : 'false'}</mark></li>
         </ul>
-        <div
-          className='console'
-          style={{ fontSize: 13, fontFamily: 'monospace', height: '100%', width: '100%' }}
-        >
-          <Measure bounds onResize={this.handleResize}>
-            {({ measureRef }) => (
-              <div
-                ref={measureRef}
-                style={{ height: '100%', width: '100%' }}
-                id="console-logs"
-              >
-                {
-                  !isLoading &&
-                  <List
-                    itemCount={logs.length}
-                    height={containerHeight}
-                    width={containerWidth}
-                    itemSize={this.getItemSize}
-                  >
-                    {({ index, style }) => (
-                      <div style={style}>
-                        {logs[index].message}
-                      </div>
-                    )}
-                  </List>
-                }
-                <div id="cache" style={{ visibility: 'hidden' }} />
-              </div>
-            )}
-          </Measure>
+        <div className='console'>
+          <div className='console-wrapper'>
+            <Measure bounds onResize={this.handleResize}>
+              {({ measureRef }) => (
+                <div
+                  ref={measureRef}
+                  style={{ height: '100%', width: '100%' }}
+                  id="console-logs"
+                >
+                  {
+                    !isLoading &&
+                    <List
+                      itemCount={logs.length}
+                      height={containerHeight}
+                      width={containerWidth}
+                      itemSize={this.getItemSize}
+                      ref={r => this.List = r}
+                    >
+                      {({ index, style }) => (
+                        <div style={style}>
+                          {logs[index].message}
+                        </div>
+                      )}
+                    </List>
+                  }
+                  <div id="cache" style={{ visibility: 'hidden' }} />
+                </div>
+              )}
+            </Measure>
+          </div>
         </div>
         <div className='footer'>
           Footer
