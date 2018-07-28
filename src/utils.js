@@ -1,6 +1,6 @@
 import random from 'random-words';
 
-export const makeLog = ({ min = 5, max = 100 } = {}) => ({
+export const makeLog = ({ min = 5, max = 40 } = {}) => ({
   context: {
     platform: {
       heroku: {
@@ -16,6 +16,7 @@ export const makeLog = ({ min = 5, max = 100 } = {}) => ({
   level: ['warn', 'info', 'debug'][Math.floor(Math.random() * 3)],
   message: random({ min, max }).join(' '),
   version: Math.floor(Math.random() * 11),
+  isPlaceholder: false,
 })
 
 export const makePlaceholder = () => ({

@@ -21,19 +21,21 @@ const makePlaceholders = (count = 300) => {
 
 class App extends Component {
   constructor(props) {
-    super(props);
+    super(props)
 
     const logs = new Array(500).fill().map(makeLog)
     const placeholders = new Array(50).fill().map(makePlaceholder)
 
     this.state = {
-      logs: placeholders.concat(logs),
+      logs,
       height: window.innerHeight,
       width: window.innerWidth,
       containerHeight: window.innerHeight,
       containerWidth: window.innerWidth,
       heightCache: null,
-    };
+      isLoadingOlderRows: false,
+      isLoadingNewerRows: false,
+    }
 
     this.getItemSize = this.getItemSize.bind(this);
     this.renderRow = this.renderRow.bind(this)
@@ -75,45 +77,89 @@ class App extends Component {
   }
 
   onScroll = ({ scrollDirection, scrollOffset }) => {
-    // console.log(scrollDirection)
-    // this.scrollDirection = scrollDirection
-    if (scrollDirection === 'backward' && scrollOffset === 0) {
-      console.log('added 300 to top, length is now', this.state.logs.length)
-      this.setState({
-        logs: makePlaceholders(300).concat(this.state.logs)
-      }, () => {
-        console.log('scrolling to 300')
-        this.List.resetAfterIndex(0)
-        this.List.scrollToItem(300)
-      })
-    }
+    this.scrollDirection = scrollDirection
+    // if (scrollDirection === 'backward' && scrollOffset === 0) {
+    //   console.log('added 300 to top, length is now', this.state.logs.length)
+    //   this.setState({
+    //     logs: makePlaceholders(300).concat(this.state.logs)
+    //   }, () => {
+    //     // See https://github.com/bvaughn/react-window/blob/f76d121269a559e4bf5d9c38896c5ac25f8235ae/src/VariableSizeList.js#L263
+    //     this.List.resetAfterIndex(0)
+    //     this.List.scrollToItem(300)
+    //   })
+    // }
   }
 
   isRowLoaded ({ index }) {
-    return
+    return this.state.logs[index].isPlaceholder
   }
 
-  // onItemsRendered = ({
-  //   overscanStartIndex,
-  //   overscanStopIndex,
-  //   visibleStartIndex,
-  //   visibleStopIndex
-  // }) => {
-  //   if (visibleStartIndex === 0 && this.scrollDirection === 'backward') {
-  //     this.setState({
-  //       logs: makePlaceholders(300).concat(this.state.logs)
-  //     }, () => {
-  //       console.log('added 300 to top, length is now', this.state.logs.length)
-  //       this.List.scrollToItem(300)
-  //     })
-  //   }
-  // }
+  loadOlderRows = () => {
+    fetchLogs().then(resp => {
+      this.setState({
+        logs: resp.concat(this.state.logs),
+        isLoadingOlderRows: false,
+      }, () => {
+        console.log(
+          'loaded 300 older rows',
+          `scrolling to ${this.visibleStartIndex + resp.length}`
+        )
+        this.List.resetAfterIndex(0)
+        this.List.scrollToItem(this.visibleStartIndex + resp.length, 'start')
+      })
+    })
+  }
+
+  loadNewerRows = () => {
+    fetchLogs().then(resp => {
+      this.setState({
+        logs: this.state.logs.concat(resp),
+        isLoadingNewerRows: false,
+      }, () => {
+        console.log(
+          'loaded 300 newer rows',
+          `scrolling to ${this.visibleStopIndex}`
+        )
+        this.List.resetAfterIndex(this.visibleStopIndex)
+        this.List.scrollToItem(this.visibleStopIndex)
+      })
+    })
+  }
+
+  onItemsRendered = ({
+    visibleStartIndex,
+    visibleStopIndex
+  }) => {
+    this.visibleStartIndex = visibleStartIndex
+    this.visibleStopIndex = visibleStopIndex
+
+    if (
+      this.scrollDirection === 'backward' &&
+      !this.state.isLoadingOlderRows &&
+      visibleStartIndex < 100
+    ) {
+      this.setState({
+        isLoadingOlderRows: true
+      }, this.loadOlderRows)
+    }
+
+    if (
+      this.scrollDirection === 'forward' &&
+      !this.state.isLoadingNewerRows &&
+      visibleStopIndex > this.state.logs.length - 100
+    ) {
+      this.setState({
+        isLoadingNewerRows: true
+      }, this.loadNewerRows)
+    }
+  }
 
   cacheLogHeights () {
     return new Promise(resolve => {
       document.getElementById('cache').style.display = 'initial'
       // Get character width and characters per line
-      const charWidth = getTextWidth(' ', '13px monospace')
+      // since the font is set to monospace this works with any character
+      const charWidth = getTextWidth('x', '13px monospace')
       const charsPerLine = Math.floor(this.state.containerWidth / charWidth)
       const heightCache = {}
 
@@ -175,8 +221,9 @@ class App extends Component {
     }
   }
 
-  scrollToBottom = () => {
-    this.List.scrollToItem(this.state.logs.length - 1)
+  scrollToIndex = idx => {
+    console.log(idx)
+    this.List.scrollToItem(idx)
   }
 
   renderRow ({ index, style }) {
@@ -206,6 +253,8 @@ class App extends Component {
       charsPerLine,
       calculatingCacheSizes,
       heightCache,
+      isLoadingOlderRows,
+      isLoadingNewerRows,
     } = this.state
 
     const isLoading = !heightCache || calculatingCacheSizes
@@ -216,9 +265,11 @@ class App extends Component {
           <li>count: <mark>{this.state.logs.length}</mark></li>
           <li>height: <mark>{containerHeight}</mark></li>
           <li>width: <mark>{containerWidth}</mark></li>
-          <li>char width: <mark>{charWidth}</mark></li>
-          <li>chars per line: <mark>{charsPerLine}</mark></li>
+          <li>char: <mark>{Math.round(charWidth * 100) / 100}px</mark></li>
+          <li>chars/line: <mark>{charsPerLine}</mark></li>
           <li>caching heights: <mark>{calculatingCacheSizes ? 'true' : 'false'}</mark></li>
+          <li>loading older: <mark>{isLoadingOlderRows ? 'true' : 'false'}</mark></li>
+          <li>loading newer: <mark>{isLoadingNewerRows ? 'true' : 'false'}</mark></li>
         </ul>
         <div className='console'>
           <div className='console-wrapper'>
@@ -239,7 +290,7 @@ class App extends Component {
                       ref={r => this.List = r}
                       onScroll={this.onScroll}
                       overscanCount={5}
-                      // onItemsRendered={this.onItemsRendered}
+                      onItemsRendered={this.onItemsRendered}
                     >
                       {this.renderRow}
                     </List>
@@ -251,10 +302,20 @@ class App extends Component {
           </div>
         </div>
         <div className='footer'>
-          Footer
-          <button onClick={this.scrollToBottom}>
+          <button onClick={() => this.scrollToIndex(logs.length - 1)}>
             Scroll to Bottom
           </button>
+          <form onSubmit={e => {
+            e.preventDefault()
+            this.scrollToIndex(e.target[0].value)
+          }}>
+            <input
+              type="text"
+              name="index"
+              placeholder="scroll to index"
+              width={50}
+            />
+          </form>
         </div>
       </div>
     );
