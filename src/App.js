@@ -2,11 +2,27 @@ import React, { Component } from 'react';
 import ReactDOM from 'react-dom';
 import './App.css';
 import Measure from 'react-measure'
-import { VariableSizeList as List } from 'react-window';
-import { makeLog, makePlaceholder, debounce, getTextWidth, makeString } from './utils'
+import { VariableSizeList as List } from 'react-window'
+import raf from 'raf'
+import {
+  makeLog,
+  makePlaceholder,
+  debounce,
+  throttle,
+  getTextWidth,
+  makeString,
+  getScrollDirection,
+} from './utils'
 import ReportSize from './ReportSize'
 
-const fetchLogs = (count = 300, timeout = 500) => {
+const LOAD_THRESHOLD = 200
+const BATCH_SIZE = 300
+const RESPONSE_TIME = 500
+
+const fetchLogs = (
+  count = BATCH_SIZE,
+  timeout = RESPONSE_TIME
+) => {
   return new Promise(resolve => {
     setTimeout(() => {
       const logs = new Array(count).fill().map(makeLog)
@@ -15,7 +31,7 @@ const fetchLogs = (count = 300, timeout = 500) => {
   })
 }
 
-const makePlaceholders = (count = 300) => {
+const makePlaceholders = (count = BATCH_SIZE) => {
   return new Array(count).fill().map(makePlaceholder)
 }
 
@@ -35,21 +51,45 @@ class App extends Component {
       heightCache: null,
       isLoadingOlderRows: false,
       isLoadingNewerRows: false,
+      isTailing: false,
     }
 
-    this.getItemSize = this.getItemSize.bind(this);
+    this.getItemSize = this.getItemSize.bind(this)
     this.renderRow = this.renderRow.bind(this)
-    this.updateCacheAndMeasurements = this.updateCacheAndMeasurements.bind(this);
+    this.updateCacheAndMeasurements = this.updateCacheAndMeasurements.bind(this)
     this.handleResize = debounce(this.handleResize, 100, false)
+    this.onItemsRendered = this.onItemsRendered.bind(this)
   }
 
-  componentDidMount() {
+  componentDidMount () {
     this.setState({
       calculatingCacheSizes: true,
     }, () => {
       this.cacheLogHeights()
         .then(this.updateCacheAndMeasurements)
+        .then(() => {
+          this.scrollToIndex(this.state.logs.length - 1)
+        })
     })
+  }
+
+  startTail = () => {
+    this.setState({ isTailing: true }, () => {
+      this.tailId = setInterval(() => {
+        if (this.state.isTailing) {
+          this.loadNewerRows().then(logs => {
+            this.scrollToIndex(logs.length - 1)
+          })
+        }
+      }, 2000)
+      console.log('start:', this.tailId)
+    })
+  }
+
+  stopTail = () => {
+    console.log('stop', this.tailId)
+    clearInterval(this.tailId)
+    this.setState({ isTailing: false })
   }
 
   handleResize = ({ bounds }) => {
@@ -65,19 +105,43 @@ class App extends Component {
 
   updateCacheAndMeasurements (data) {
     // Update measurements and set cache loading state
-    this.setState({
-      ...data,
-      calculatingCacheSizes: false
+    return new Promise(resolve => {
+      this.setState({
+        ...data,
+        calculatingCacheSizes: false
+      }, () => {
+        // Force List to clear cached heights
+        if (this.List) {
+          this.List.resetAfterIndex(0)
+        }
+        resolve()
+      })
     })
-
-    // Force List to clear cached heights
-    if (this.List) {
-      this.List.resetAfterIndex(0)
-    }
   }
 
-  onScroll = ({ scrollDirection, scrollOffset }) => {
-    this.scrollDirection = scrollDirection
+  onScroll = ({
+    scrollOffset,
+    scrollDirection,
+    scrollUpdateWasRequested
+  }) => {
+    raf(() => {
+      // For some reason the react-window direction is not always accurate
+      // specifically right after we've forcefully scrolled to an index
+      // this.scrollDirection = getScrollDirection(scrollOffset, this.mostRecentScrollOffset)
+      this.scrollDirection = scrollUpdateWasRequested ? null : scrollDirection
+      this.isScrolling = scrollOffset !== this.mostRecentScrollOffset
+      this.mostRecentScrollOffset = scrollOffset
+
+      const { isTailing } = this.state
+
+      if (this.isScrolledToBottom && !isTailing) {
+        return this.startTail()
+      }
+
+      if (!this.isScrolledToBottom && isTailing) {
+        return this.stopTail()
+      }
+    })
     // if (scrollDirection === 'backward' && scrollOffset === 0) {
     //   console.log('added 300 to top, length is now', this.state.logs.length)
     //   this.setState({
@@ -105,23 +169,22 @@ class App extends Component {
           `scrolling to ${this.visibleStartIndex + resp.length}`
         )
         this.List.resetAfterIndex(0)
-        this.List.scrollToItem(this.visibleStartIndex + resp.length, 'start')
+        this.scrollToIndex(this.visibleStartIndex + resp.length, 'start')
       })
     })
   }
 
   loadNewerRows = () => {
-    fetchLogs().then(resp => {
-      this.setState({
-        logs: this.state.logs.concat(resp),
-        isLoadingNewerRows: false,
-      }, () => {
-        console.log(
-          'loaded 300 newer rows',
-          `scrolling to ${this.visibleStopIndex}`
-        )
-        this.List.resetAfterIndex(this.visibleStopIndex)
-        this.List.scrollToItem(this.visibleStopIndex)
+    return new Promise(resolve => {
+      fetchLogs().then(resp => {
+        const newLogs = this.state.logs.concat(resp)
+        this.setState({
+          logs: newLogs,
+          isLoadingNewerRows: false,
+        }, () => {
+          console.log('loaded 300 new rows')
+          resolve(newLogs)
+        })
       })
     })
   }
@@ -132,25 +195,39 @@ class App extends Component {
   }) => {
     this.visibleStartIndex = visibleStartIndex
     this.visibleStopIndex = visibleStopIndex
+    this.isScrolledToBottom = visibleStopIndex === this.state.logs.length - 1
 
-    if (
+    if (!this.isScrolling) return false
+
+    const shouldLoadOlderRows = (
       this.scrollDirection === 'backward' &&
+      this.isScrolling &&
       !this.state.isLoadingOlderRows &&
-      visibleStartIndex < 100
-    ) {
-      this.setState({
+      visibleStartIndex < LOAD_THRESHOLD
+    )
+
+    if (shouldLoadOlderRows) {
+      return this.setState({
         isLoadingOlderRows: true
       }, this.loadOlderRows)
     }
 
-    if (
+    const shouldLoadNewerRows = (
       this.scrollDirection === 'forward' &&
+      this.isScrolling &&
       !this.state.isLoadingNewerRows &&
-      visibleStopIndex > this.state.logs.length - 100
-    ) {
-      this.setState({
+      visibleStopIndex > this.state.logs.length - LOAD_THRESHOLD
+    )
+
+    if (shouldLoadNewerRows) {
+      return this.setState({
         isLoadingNewerRows: true
-      }, this.loadNewerRows)
+      }, () => {
+        this.loadNewerRows()
+          .then(() => {
+            this.scrollToIndex(visibleStopIndex, 'end')
+          })
+      })
     }
   }
 
@@ -190,6 +267,7 @@ class App extends Component {
             charWidth,
             charsPerLine,
             heightCache,
+            lineHeight: heightCache[Object.keys(heightCache)[0]],
           })
         }
       )
@@ -197,19 +275,18 @@ class App extends Component {
   }
 
   getItemSize (idx) {
-    const { logs, heightCache } = this.state
+    const { logs, heightCache, lineHeight } = this.state
     const log = logs[idx]
     const cache = heightCache
+    const length = log.message.length
 
     // If it's a placeholder
     if (log.isPlaceholder) {
-      return cache[Object.keys(cache)[0]]
+      return lineHeight
     }
 
-    const length = log.message.length
-
     // Find the closest cached height to this log's length
-    let prev = cache[Object.keys(cache)[0]]
+    let prev = lineHeight
     for (let h in cache) {
       if (length < h) {
         return cache[h]
@@ -221,9 +298,11 @@ class App extends Component {
     }
   }
 
-  scrollToIndex = idx => {
-    console.log(idx)
-    this.List.scrollToItem(idx)
+  scrollToIndex = (idx, position = 'start') => {
+    this.isScrolling = false
+    this.scrollDirection = null
+    this.mostRecentScrollOffset = null
+    this.List.scrollToItem(idx, position)
   }
 
   renderRow ({ index, style }) {
@@ -251,10 +330,12 @@ class App extends Component {
       containerWidth,
       charWidth,
       charsPerLine,
+      lineHeight,
       calculatingCacheSizes,
       heightCache,
       isLoadingOlderRows,
       isLoadingNewerRows,
+      isTailing,
     } = this.state
 
     const isLoading = !heightCache || calculatingCacheSizes
@@ -262,14 +343,16 @@ class App extends Component {
     return (
       <div className='App'>
         <ul className='stats'>
-          <li>count: <mark>{this.state.logs.length}</mark></li>
+          <li>rows: <mark>{this.state.logs.length}</mark></li>
           <li>height: <mark>{containerHeight}</mark></li>
           <li>width: <mark>{containerWidth}</mark></li>
           <li>char: <mark>{Math.round(charWidth * 100) / 100}px</mark></li>
           <li>chars/line: <mark>{charsPerLine}</mark></li>
-          <li>caching heights: <mark>{calculatingCacheSizes ? 'true' : 'false'}</mark></li>
+          <li>line: <mark>{lineHeight}px</mark></li>
+          <li>caching: <mark>{calculatingCacheSizes ? 'true' : 'false'}</mark></li>
           <li>loading older: <mark>{isLoadingOlderRows ? 'true' : 'false'}</mark></li>
           <li>loading newer: <mark>{isLoadingNewerRows ? 'true' : 'false'}</mark></li>
+          <li>tailing: <mark>{isTailing ? 'true' : 'false'}</mark></li>
         </ul>
         <div className='console'>
           <div className='console-wrapper'>
@@ -302,7 +385,10 @@ class App extends Component {
           </div>
         </div>
         <div className='footer'>
-          <button onClick={() => this.scrollToIndex(logs.length - 1)}>
+          <button onClick={() => {
+            this.scrollToIndex(logs.length - 1)
+            this.startTail()
+          }}>
             Scroll to Bottom
           </button>
           <form onSubmit={e => {

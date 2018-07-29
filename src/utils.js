@@ -48,6 +48,27 @@ export function debounce(func, wait, immediate) {
   };
 }
 
+export const throttle = (func, limit) => {
+  let inThrottle
+  return function() {
+    const args = arguments
+    const context = this
+    if (!inThrottle) {
+      func.apply(context, args)
+      inThrottle = true
+      setTimeout(() => inThrottle = false, limit)
+    }
+  }
+}
+
+export function getScrollDirection (currentOffset, prevOffset) {
+  return prevOffset
+    ? currentOffset < prevOffset
+      ? 'backward'
+      : 'forward'
+    : null
+}
+
 export function getTextWidth(text, font) {
   // re-use canvas object for better performance
   var canvas = getTextWidth.canvas || (getTextWidth.canvas = document.createElement("canvas"));
